@@ -10,145 +10,258 @@ DO NOT MODIFY IMPORTS. DO NOT ADD EXTRA FUNCTIONS.
 DO NOT MODIFY EXISTING FUNCTION SIGNATURES.
 DO NOT IMPORT ADDITIONAL LIBRARIES.
 DOING SO MAY CAUSE YOUR CODE TO FAIL AUTOMATED TESTING.
+
+YOU MAY MODIFY THE LINE net = NetworkLstm().to(device)
 """
+
 import numpy as np
-import pickle as pkl
-import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as tnn
+import torch.optim as topti
+
+from torchtext import data
+from torchtext.vocab import GloVe
 
 
-class LinearModel:
-    def __init__(self, num_inputs, learning_rate):
+# Class for creating the neural network.
+class NetworkLstm(tnn.Module):
+    """
+    Implement an LSTM-based network that accepts batched 50-d
+    vectorized inputs, with the following structure:
+    LSTM(hidden dim = 100) -> Linear(64) -> ReLu-> Linear(1)
+    Assume batch-first ordering.
+    Output should be 1d tensor of shape [batch_size].
+    """
+
+    def __init__(self):
+        super(NetworkLstm, self).__init__()
         """
-        Model is very similar to the Perceptron shown in Lectures 1c, slide 12, except that:
-        (1) the bias is indexed by w(n+1) rather than w(0), and
-        (2) the activation function is a (continuous) sigmoid rather than a (discrete) step function.
-
-        x1 ----> * w1 ----\
-        x2 ----> * w2 -----\
-        x3 ----> * w3 ------\
-        ...
-                             \
-        xn ----> * wn -------+--> s --> activation ---> z
-        1  ----> * w(n+1) --/
+        TODO:
+        Create and initialise weights and biases for the layers.
         """
-        self.num_inputs = num_inputs
-        self.lr = learning_rate
-        self.weights = np.asarray([1.0, -1.0, 0.0])  # Initialize as straight line
-
-    def activation(self, x):
+        self.lstm = torch.nn.LSTM(50,100,batch_first=True)
+        self.Linear1=torch.nn.Linear(100,64)
+        self.Relu=torch.nn.ReLU()
+        self.Linear2=torch.nn.Linear(64,1)
+        
+    def forward(self, input, length):
         """
-        TODO: Implement a sigmoid activation function that accepts a float and returns
-        a float, but raises a Value error if a boolean, list or numpy array is passed in
-        hint: consider np.exp()
+        DO NOT MODIFY FUNCTION SIGNATURE
+        TODO:
+        Create the forward pass through the network.
         """
-        out = np.exp(x)+1
+        input = torch.nn.utils.rnn.pack_padded_sequence(input=input, lengths=length, batch_first=True)
+        out,state = self.lstm(input)
+        #print(state[0].size())
+        x = self.Linear1(state[0])
+        #print(x.size())
+        x = self.Relu(x)
+        x = self.Linear2(x)
+        #print(x.size())        
+        return x.view(x.shape[1])
 
-        return np.exp(x)/out
+# Class for creating the neural network.
+class NetworkCnn(tnn.Module):
+    """
+    Implement a Convolutional Neural Network.
+    All conv layers should be of the form:
+    conv1d(channels=50, kernel size=8, padding=5)
 
-    def forward(self, inputs):
+    Conv -> ReLu -> maxpool(size=4) -> Conv -> ReLu -> maxpool(size=4) ->
+    Conv -> ReLu -> maxpool over time (global pooling) -> Linear(1)
+
+    The max pool over time operation refers to taking the
+    maximum val from the entire output channel. See Kim et. al. 2014:
+    https://www.aclweb.org/anthology/D14-1181/
+    Assume batch-first ordering.
+    Output should be 1d tensor of shape [batch_size].
+    """
+
+    def __init__(self):
+        super(NetworkCnn, self).__init__()
         """
-        TODO: Implement the forward pass (inference) of a the model.
-
-        inputs is a numpy array. The bias term is the last element in self.weights.
-        hint: call the activation function you have implemented above.
+        TODO:
+        Create and initialise weights and biases for the layers.
         """
-        out = self.weights[2]+self.weights[0]*inputs[0]+self.weights[1]*inputs[1]
+        self.conv1 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.conv2 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.conv3 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.Relu=torch.nn.ReLU()
+        self.maxpool1 = torch.nn.MaxPool1d(4)
+        self.maxpool2 = torch.nn.MaxPool1d(4)
+        self.Linear = torch.nn.Linear(50,1)
+       
+        
+        #self.sigmoid = torch.nn.Sigmoid()
 
-
-        return self.activation(out)
-
-    @staticmethod
-    def loss(prediction, label):
+    def forward(self, input, length):
         """
-        TODO: Return the cross entropy for the given prediction and label
-        hint: consider using np.log()
+        DO NOT MODIFY FUNCTION SIGNATURE
+        TODO:
+        Create the forward pass through the network.
         """
-        out = label*np.log(prediction)+(1-label)*np.log(1-prediction)
-        return -1*out
+        
+        x = self.conv1(input.permute(0,2,1))
+       
+        x = self.Relu(x)
+        x = self.maxpool1(x)
+        
+        x = self.conv2(x)
+        x = self.Relu(x)
+        x = self.maxpool2(x)
+        
+        x = self.conv3(x)
+        x = self.Relu(x)
+
+        ##x.shape[-1]
+        self.maxpoolovertimes = torch.nn.MaxPool1d(x.shape[2])  
+        x = self.maxpoolovertimes(x)
+        #print(x.size())
+        x=x.view(x.shape[0],x.shape[1])
+
+        x = self.Linear(x)
+        x = x.view(x.shape[0])
+        return x
 
 
-    @staticmethod
-    def error(prediction, label):
-        """
-        TODO: Return the difference between the label and the prediction
+        
 
-        For example, if label= 1 and the prediction was 0.8, return 0.2
-                     if label= 0 and the preduction was 0.43 return -0.43
-        """
-        return label-prediction
 
-    def backward(self, inputs, diff):
-        """
-        TODO: Adjust self.weights by gradient descent
+def lossFunc():
+    """
+    TODO:
+    Return a loss function appropriate for the above networks that
+    will add a sigmoid to the output and calculate the binary
+    cross-entropy.
+    """
 
-        We take advantage of the simplification shown in Lecture 2b, slide 23,
-        to compute the gradient directly from the differential or difference
-        dE/ds = z - t (which is passed in as diff)
 
-        The resulting weight update should look essentially the same as for the
-        Perceptron Learning Rule (shown in Lectures 1c, slide 11) except that
-        the error can take on any continuous value between -1 and +1,
-        rather than being restricted to the integer values -1, 0 or +1.
 
-        Note: Numpy arrays are passed by reference and can be modified in-place
-        """
-        self.weights[0]=self.weights[0]+self.lr*diff*inputs[0]
-        self.weights[1]=self.weights[1]+self.lr*diff*inputs[1]
-        self.weights[2]=self.weights[2]+self.lr*diff*1
-        return 
+    return torch.nn.BCEWithLogitsLoss()
 
-    def plot(self, inputs, marker):
-        """
-        Plot the data and the decision boundary
-        """
-        xmin = inputs[:, 0].min() * 1.1
-        xmax = inputs[:, 0].max() * 1.1
-        ymin = inputs[:, 1].min() * 1.1
-        ymax = inputs[:, 1].max() * 1.1
 
-        x = np.arange(xmin * 1.3, xmax * 1.3, 0.1)
-        plt.scatter(inputs[:25, 0], inputs[:25, 1], c="C0", edgecolors='w', s=100)
-        plt.scatter(inputs[25:, 0], inputs[25:, 1], c="C1", edgecolors='w', s=100)
+def measures(outputs, labels):
+    """
+    TODO:
+    Return (in the following order): the number of true positive
+    classifications, true negatives, false positives and false
+    negatives from the given batch outputs and provided labels.
 
-        plt.xlim((xmin, xmax))
-        plt.ylim((ymin, ymax))
-        plt.plot(x, -(self.weights[0] * x + self.weights[2]) / self.weights[1], marker, alpha=0.6)
-        plt.title("Data and decision boundary")
-        plt.xlabel("x1")
-        plt.ylabel("x2").set_rotation(0)
+    outputs and labels are torch tensors.
+    """
+    out = outputs.numpy()
+    label = labels.numpy()
+    out = 1*(out>=0.5)
+    tp=0
+    tn=0
+    fp=0
+    fn=0
+    for i in range(len(out)):
+
+        if out[i]==1 and label[i]==1:
+            tp+=1
+        if out[i]==0 and label[i]==0:
+            tn+=1
+        if out[i]==1 and label[i]==0:
+            fp+=1
+        if out[i] == 0 and label[i]==1:
+            fn+=1
+    
+    
+    return tp,tn,fp,fn
 
 
 def main():
-    inputs, labels = pkl.load(open("binary_classification_data.pkl", "rb"))
+    # Use a GPU if available, as it should be faster.
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("Using device: " + str(device))
 
-    epochs = 400
-    model = LinearModel(num_inputs=inputs.shape[1], learning_rate=0.01)
+    # Load the training dataset, and create a data loader to generate a batch.
+    textField = data.Field(lower=True, include_lengths=True, batch_first=True)
+    labelField = data.Field(sequential=False)
 
-    for i in range(epochs):
-        num_correct = 0
-        cost = 0
-        for x, y in zip(inputs, labels):
-            # Get prediction
-            output = model.forward(x)
+    from imdb_dataloader import IMDB
+    train, dev = IMDB.splits(textField, labelField, train="train", validation="dev")
 
-            # Calculate loss
-            cost += model.loss(output, y)
+    textField.build_vocab(train, dev, vectors=GloVe(name="6B", dim=50))
+    labelField.build_vocab(train, dev)
 
-            # Calculate difference or differential
-            diff = model.error(output, y)
+    trainLoader, testLoader = data.BucketIterator.splits((train, dev), shuffle=True, batch_size=64,
+                                                         sort_key=lambda x: len(x.text), sort_within_batch=True)
 
-            # Update the weights
-            model.backward(x, diff)
+    # Create an instance of the network in memory (potentially GPU memory). Can change to NetworkCnn during development.
+    net = NetworkLstm().to(device)
 
-            # Record accuracy
-            preds = output > 0.5  # 0.5 is midline of sigmoid
-            num_correct += int(preds == y)
+    criterion = lossFunc()
+    optimiser = topti.Adam(net.parameters(), lr=0.001)  # Minimise the loss using the Adam algorithm.
 
-        print(f" Cost: {cost/len(inputs):.2f} Accuracy: {num_correct / len(inputs) * 100:.2f}%")
-        model.plot(inputs, "C2--")
-    model.plot(inputs, "k")
-    plt.show()
+    for epoch in range(10):
+        running_loss = 0
+
+        for i, batch in enumerate(trainLoader):
+            # Get a batch and potentially send it to GPU memory.
+            inputs, length, labels = textField.vocab.vectors[batch.text[0]].to(device), batch.text[1].to(
+                device), batch.label.type(torch.FloatTensor).to(device)
+
+            labels -= 1
+
+            # PyTorch calculates gradients by accumulating contributions to them (useful for
+            # RNNs).  Hence we must manually set them to zero before calculating them.
+            optimiser.zero_grad()
+
+            # Forward pass through the network.
+            output = net(inputs, length)
+
+            loss = criterion(output, labels)
+
+            # Calculate gradients.
+            loss.backward()
+
+            # Minimise the loss according to the gradient.
+            optimiser.step()
+
+            running_loss += loss.item()
+
+            if i % 32 == 31:
+                print("Epoch: %2d, Batch: %4d, Loss: %.3f" % (epoch + 1, i + 1, running_loss / 32))
+                running_loss = 0
+
+    true_pos, true_neg, false_pos, false_neg = 0, 0, 0, 0
+
+    # Evaluate network on the test dataset.  We aren't calculating gradients, so disable autograd to speed up
+    # computations and reduce memory usage.
+    with torch.no_grad():
+        for batch in testLoader:
+            # Get a batch and potentially send it to GPU memory.
+            inputs, length, labels = textField.vocab.vectors[batch.text[0]].to(device), batch.text[1].to(
+                device), batch.label.type(torch.FloatTensor).to(device)
+
+            labels -= 1
+
+            outputs = net(inputs, length)
+
+            tp_batch, tn_batch, fp_batch, fn_batch = measures(outputs, labels)
+            true_pos += tp_batch
+            true_neg += tn_batch
+            false_pos += fp_batch
+            false_neg += fn_batch
+
+    accuracy = 100 * (true_pos + true_neg) / len(dev)
+    matthews = MCC(true_pos, true_neg, false_pos, false_neg)
+
+    print("Classification accuracy: %.2f%%\n"
+          "Matthews Correlation Coefficient: %.2f" % (accuracy, matthews))
 
 
-if __name__ == "__main__":
+# Matthews Correlation Coefficient calculation.
+def MCC(tp, tn, fp, fn):
+    numerator = tp * tn - fp * fn
+    denominator = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.divide(numerator, denominator)
+
+
+if __name__ == '__main__':
     main()

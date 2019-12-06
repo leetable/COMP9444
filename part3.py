@@ -1,251 +1,149 @@
-#!/usr/bin/env python3
-"""
-part3.py
-
-UNSW COMP9444 Neural Networks and Deep Learning
-
-ONLY COMPLETE METHODS AND CLASSES MARKED "TODO".
-
-DO NOT MODIFY IMPORTS. DO NOT ADD EXTRA FUNCTIONS.
-DO NOT MODIFY EXISTING FUNCTION SIGNATURES.
-DO NOT IMPORT ADDITIONAL LIBRARIES.
-DOING SO MAY CAUSE YOUR CODE TO FAIL AUTOMATED TESTING.
-"""
-import torch
-from torchvision import datasets, transforms
-from torch import nn, optim
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import torch.nn as tnn
+import torch.nn.functional as F
+import torch.optim as topti
+from torchtext import data
+from torchtext.vocab import GloVe
+from imdb_dataloader import IMDB
 
 
-class Linear(nn.Module):
-    """
-    DO NOT MODIFY
-    Linear (10) -> ReLU -> LogSoftmax
-    """
-
+# Class for creating the neural network.
+class Network(tnn.Module):
     def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(784, 10)
+        super(Network, self).__init__()
+        self.conv1 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.conv2 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.conv3 = torch.nn.Conv1d(50,50,8,padding=5)
+        self.Relu=torch.nn.ReLU()
+        self.maxpool1 = torch.nn.MaxPool1d(4)
+        self.maxpool2 = torch.nn.MaxPool1d(4)
+        self.Linear = torch.nn.Linear(50,1)
 
-    def forward(self, x):
-    	
-    	x = x.view(x.shape[0], -1)  # make sure inputs are flattened
-    	
-    	x = F.relu(self.fc1(x))
-    	x = F.log_softmax(x, dim=1)  # preserve batch dim
-    	return x
-
-
-class FeedForward(nn.Module):
-    """
-    TODO: Implement the following network structure
-    Linear (256) -> ReLU -> Linear(64) -> ReLU -> Linear(10) -> ReLU-> LogSoftmax
-    """
-    def __init__(self):
-    	super().__init__()
-    	self.fc1 = nn.Linear(784,256)
-    	self.fc2 = nn.Linear(256,64)
-    	self.fc3 = nn.Linear(64,10)
-    def forward(self,x):
-    	x = x.view(x.shape[0],-1)
-    	x=F.relu(self.fc1(x))
-    	x=F.relu(self.fc2(x))
-    	x=F.relu(self.fc3(x))
-    	x=F.log_softmax(x,dim=1)
-    	return x
-
-
-class CNN(nn.Module):
-    """
-    TODO: Implement CNN Network structure
-
-    conv1 (channels = 10, kernel size= 5, stride = 1) -> Relu -> max pool (kernel size = 2x2) ->
-    conv2 (channels = 50, kernel size= 5, stride = 1) -> Relu -> max pool (kernel size = 2x2) ->
-    Linear (256) -> Relu -> Linear (10) -> LogSoftmax
-
-
-    Hint: You will need to reshape outputs from the last conv layer prior to feeding them into
-    the linear layers.
-    """
-    def __init__(self):
-    	super().__init__()
-
-
-    	self.conv1 = nn.Conv2d(1,10,kernel_size=5,stride = 1)
-    	self.conv2 = nn.Conv2d(10,50,kernel_size = 5,stride = 1)
-    	self.maxpool = nn.MaxPool2d(kernel_size=2)
-    	self.fc1 = nn.Linear(800,256)
-    	self.fc2 = nn.Linear(256,10)
-
-
-
-    def forward(self,x):
-
-
-    	x = F.relu(self.conv1(x))
-    	x = self.maxpool(x)
-    	x = F.relu(self.conv2(x))
-    	#print(x.size())
-    	x = self.maxpool(x)
-    	#print(x.size())
-
-    	
-    	x = x.view(x.shape[0],-1)
-    	x = F.relu(self.fc1(x))
-
-
-    	x = self.fc2(x)
-    	x=F.log_softmax(x,dim=1)
-    	return x
-
-
-
-class NNModel:
-    def __init__(self, network, learning_rate):
+    def forward(self, input, length):
         """
-        Load Data, initialize a given network structure and set learning rate
-        DO NOT MODIFY
+        DO NOT MODIFY FUNCTION SIGNATURE
+        Create the forward pass through the network.
         """
-
-        # Define a transform to normalize the data
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize((0.5,), (0.5,))])
-
-        # Download and load the training data
-        trainset = datasets.KMNIST(root='./data', train=True, download=True, transform=transform)
-        self.trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=False)
-
-        # Download and load the test data
-        testset = datasets.KMNIST(root='./data', train=False, download=True, transform=transform)
-        self.testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False)
-
-        self.model = network
-
-        """
-        TODO: Set appropriate loss function such that learning is equivalent to minimizing the
-        cross entropy loss. Note that we are outputting log-softmax values from our networks,
-        not raw softmax values, so just using torch.nn.CrossEntropyLoss is incorrect.
+        x = self.conv1(input.permute(0,2,1))
+       
+        x = self.Relu(x)
+        x = self.maxpool1(x)
         
-        Hint: All networks output log-softmax values (i.e. log probabilities or.. likelihoods.). 
-        """
+        x = self.conv2(x)
+        x = self.Relu(x)
+        x = self.maxpool2(x)
+        
+        x = self.conv3(x)
+        x = self.Relu(x)
 
-        #Loss Function
-        self.lossfn = nn.NLLLoss()
+        ##x.shape[-1]
+        self.maxpoolovertimes = torch.nn.MaxPool1d(x.shape[2])  
+        x = self.maxpoolovertimes(x)
+        #print(x.size())
+        x=x.view(x.shape[0],x.shape[1])
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
-
-        self.num_train_samples = len(self.trainloader)
-        self.num_test_samples = len(self.testloader)
-
-    def view_batch(self):
-        """
-        TODO: Display first batch of images from trainloader in 8x8 grid
-
-        Do not make calls to plt.imshow() here
-
-        Return:
-           1) A float32 numpy array (of dim [28*8, 28*8]), containing a tiling of the batch images,
-           place the first 8 images on the first row, the second 8 on the second row, and so on
-
-           2) An int 8x8 numpy array of labels corresponding to this tiling
-        """
-        #data is the data of img
-        img,labels = self.trainloader.__iter__().__next__()  
-        aa = img.view(64,28,28)
-        bb = aa.view(8,8,28,28)
-        cc = torch.transpose(bb,1,2)        
-        batch = cc.reshape(8*28,8*28)
-        labels = labels.view(8,8)
-        return batch,labels
+        x = self.Linear(x)
+        x = x.view(x.shape[0])
+        return x
 
 
-    def train_step(self):
-        """
-        Used for submission tests and may be usefull for debugging
-        DO NOT MODIFY
-        """
-        self.model.train()
-        for images, labels in self.trainloader:
-            log_ps = self.model(images)
-            loss = self.lossfn(log_ps, labels)
+class PreProcessing():
+    def pre(x):
+        """Called after tokenization"""
+        return x
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            return
+    def post(batch, vocab):
+        """Called after numericalization but prior to vectorization"""
+        return batch
 
-    def train_epoch(self):
-        self.model.train()
-        for images, labels in self.trainloader:
-            log_ps = self.model(images)
-            loss = self.lossfn(log_ps, labels)
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-
-        return
-
-    def eval(self):
-        self.model.eval()
-        accuracy = 0
-        with torch.no_grad():
-            for images, labels in self.testloader:
-                log_ps = self.model(images)
-                ps = torch.exp(log_ps)
-                top_p, top_class = ps.topk(1, dim=1)
-                equals = top_class == labels.view(*top_class.shape)
-                accuracy += torch.mean(equals.type(torch.FloatTensor))
-
-        return accuracy / self.num_test_samples
+    text_field = data.Field(lower=True, include_lengths=True, batch_first=True, preprocessing=pre, postprocessing=post)
 
 
-def plot_result(results, names):
+def lossFunc():
     """
-    Take a 2D list/array, where row is accuracy at each epoch of training for given model, and
-    names of each model, and display training curves
+    Define a loss function appropriate for the above networks that will
+    add a sigmoid to the output and calculate the binary cross-entropy.
     """
-    for i, r in enumerate(results):
-        plt.plot(range(len(r)), r, label=names[i])
-    plt.legend()
-    plt.title("KMNIST")
-    plt.xlabel("Epoch")
-    plt.ylabel("Test accuracy")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-    plt.savefig("./part_2_plot.png")
-
+    return torch.nn.BCEWithLogitsLoss()
 
 def main():
-    models = [Linear(), FeedForward(), CNN()]  # Change during development
-    #models = [CNN()]
-    epochs = 10
-    results = []
+    # Use a GPU if available, as it should be faster.
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("Using device: " + str(device))
 
-    # Can comment the below out during development
-    images, labels = NNModel(Linear(), 0.003).view_batch()
-    print(labels)
+    # Load the training dataset, and create a data loader to generate a batch.
+    textField = PreProcessing.text_field
+    labelField = data.Field(sequential=False)
 
-    plt.imshow(images, cmap="Greys")
-    plt.show()
+    train, dev = IMDB.splits(textField, labelField, train="train", validation="dev")
 
-    for model in models:
-        print(f"Training {model.__class__.__name__}...")
-        m = NNModel(model, 0.003)
+    textField.build_vocab(train, dev, vectors=GloVe(name="6B", dim=50))
+    labelField.build_vocab(train, dev)
 
-        accuracies = [0]
-        for e in range(epochs):
-            m.train_epoch()
-            accuracy = m.eval()
-            print(f"Epoch: {e}/{epochs}.. Test Accuracy: {accuracy}")
-            accuracies.append(accuracy)
-        results.append(accuracies)
+    trainLoader, testLoader = data.BucketIterator.splits((train, dev), shuffle=True, batch_size=64,
+                                                         sort_key=lambda x: len(x.text), sort_within_batch=True)
 
-    plot_result(results, [m.__class__.__name__ for m in models])
+    net = Network().to(device)
+    criterion =lossFunc()
+    optimiser = topti.Adam(net.parameters(), lr=0.001)  # Minimise the loss using the Adam algorithm.
 
+    for epoch in range(10):
+        running_loss = 0
 
-if __name__ == "__main__":
+        for i, batch in enumerate(trainLoader):
+            # Get a batch and potentially send it to GPU memory.
+            inputs, length, labels = textField.vocab.vectors[batch.text[0]].to(device), batch.text[1].to(
+                device), batch.label.type(torch.FloatTensor).to(device)
+
+            labels -= 1
+
+            # PyTorch calculates gradients by accumulating contributions to them (useful for
+            # RNNs).  Hence we must manually set them to zero before calculating them.
+            optimiser.zero_grad()
+
+            # Forward pass through the network.
+            output = net(inputs, length)
+
+            loss = criterion(output, labels)
+
+            # Calculate gradients.
+            loss.backward()
+
+            # Minimise the loss according to the gradient.
+            optimiser.step()
+
+            running_loss += loss.item()
+
+            if i % 32 == 31:
+                print("Epoch: %2d, Batch: %4d, Loss: %.3f" % (epoch + 1, i + 1, running_loss / 32))
+                running_loss = 0
+
+    num_correct = 0
+
+    # Save mode
+    torch.save(net.state_dict(), "./model.pth")
+    print("Saved model")
+
+    # Evaluate network on the test dataset.  We aren't calculating gradients, so disable autograd to speed up
+    # computations and reduce memory usage.
+    with torch.no_grad():
+        for batch in testLoader:
+            # Get a batch and potentially send it to GPU memory.
+            inputs, length, labels = textField.vocab.vectors[batch.text[0]].to(device), batch.text[1].to(
+                device), batch.label.type(torch.FloatTensor).to(device)
+
+            labels -= 1
+
+            # Get predictions
+            outputs = torch.sigmoid(net(inputs, length))
+            predicted = torch.round(outputs)
+
+            num_correct += torch.sum(labels == predicted).item()
+
+    accuracy = 100 * num_correct / len(dev)
+
+    print(f"Classification accuracy: {accuracy}")
+
+if __name__ == '__main__':
     main()
